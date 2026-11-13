@@ -7,7 +7,7 @@ Diptakshi Sen - personal project, 2026
 The pricing inputs are not assumed. They are pulled from the market.
 
     Spot                SPY (S&P 500 ETF), last close
-    Risk-free rate      ^TNX, US 10-year Treasury yield
+    Risk-free rate      ^FVX, US 5-year Treasury yield (same tenor as the note)
     Dividend yield      implied, backed out of put-call parity on the
                         at-the-money option chain
     Volatility          implied, interpolated at the money across the option
@@ -28,13 +28,14 @@ Run:  pip install yfinance numpy python-docx
       python structured_products_market_en.py
 """
 
+import os
 from math import exp, log, sqrt, erf
 from datetime import datetime
 import numpy as np
 
 # --------------------------------------------------------- 0. MARKET DATA ---
 UNDERLYING = "SPY"          # S&P 500 ETF, deep and liquid option chain
-RATE_TICKER = "^TNX"        # US 10-year yield, quoted in percent
+RATE_TICKER = "^FVX"        # US 5-year yield, matches the 5-year maturity of the note
 
 NOTIONAL = 100.0    # face value of the note
 FEE = 2.0           # structuring margin and distribution fee, in points
@@ -82,6 +83,8 @@ def load_market():
     an explicit parameter set, flagged as such in the report.
     """
     try:
+        if os.environ.get("SP_OFFLINE"):
+            raise RuntimeError("offline mode (SP_OFFLINE)")
         import yfinance as yf
 
         tk = yf.Ticker(UNDERLYING)
@@ -135,18 +138,21 @@ def load_market():
             raise ValueError("implied volatility unavailable")
 
         sigma = term[-1][1]                      # longest listed expiry
+        vol_tenor = term[-1][0]                  # flat extrapolation beyond this tenor
         q = float(np.median(q_est)) if q_est else 0.0
         q = min(max(q, 0.0), 0.08)               # sanity bound
 
         src = (f"Yahoo Finance, {UNDERLYING} as of {hist.index[-1].date()}, "
                f"rate {RATE_TICKER}")
         return {"spot": spot, "r": r, "q": q, "sigma": sigma, "realised": realised,
-                "term": term, "source": src, "live": True}
+                "term": term, "source": src, "live": True,
+                "vol_tenor": vol_tenor}
 
     except Exception as exc:
         print(f"[!] Market data unavailable ({exc}). Explicit parameters used.")
         return {"spot": 100.0, "r": 0.030, "q": 0.020, "sigma": 0.180,
                 "realised": 0.165, "term": [(1.0, 0.170, "n/a"), (2.0, 0.180, "n/a")],
+                "vol_tenor": 2.0,
                 "source": "Explicit parameters (no market data available)",
                 "live": False}
 
@@ -366,6 +372,7 @@ def summary_lines():
     L.append(f"  Risk-free rate                      {pct(R):>12}")
     L.append(f"  Dividend yield                      {pct(Q):>12}")
     L.append(f"  Implied volatility (market)         {pct(VOL):>12}")
+    L.append(f"  Volatility read at tenor            {MKT['vol_tenor']:>12.2f} years, held flat")
     L.append(f"  Realised volatility, 1 year         {pct(MKT['realised']):>12}")
     L.append(f"  Volatility premium                  {pct(VOL - MKT['realised']):>12}")
     L.append(f"  Maturity                            {T:>12.1f} years")
@@ -442,7 +449,7 @@ def summary_lines():
     return L
 
 
-def write_docx(path="Diptakshi_Sen_Structured_Products_Report.docx"):
+def write_docx(path="structured_products_report.docx"):
     try:
         from docx import Document
         from docx.shared import Pt, Cm, RGBColor
@@ -560,11 +567,12 @@ def write_docx(path="Diptakshi_Sen_Structured_Products_Report.docx"):
 
     if MKT["live"]:
         note = (f"On the data. Source: {MKT['source']}. The spot is the last close, the risk-free "
-                f"rate is the 10-year yield, the volatility is read at the money off the option "
+                f"rate is the 5-year yield (same tenor as the note), the volatility is read at the money off the option "
                 f"chain, and the dividend yield is backed out of put-call parity rather than "
-                f"assumed. The maturity of the note ({T:.0f} years) is longer than the longest "
-                f"listed expiry, so the volatility is extrapolated: that is a stated assumption, "
-                f"not an observation.")
+                f"assumed. Volatility assumption: the at-the-money volatility of the longest listed "
+                f"expiry ({MKT['vol_tenor']:.1f} years) is held flat to the {T:.0f}-year maturity, and "
+                f"the same volatility is used at every strike. Skew is therefore ignored here; "
+                f"desk_analytics.py measures what it does to the autocall coupon.")
     else:
         note = (f"On the data. The program queries Yahoo Finance ({UNDERLYING} for the spot and "
                 f"the option chain, {RATE_TICKER} for the rate) and backs the dividend yield out "
@@ -572,9 +580,9 @@ def write_docx(path="Diptakshi_Sen_Structured_Products_Report.docx"):
                 f"above come from the explicit fallback parameters (spot {S0:.0f}, rate {R:.2%}, "
                 f"dividend {Q:.2%}, volatility {VOL:.2%}), and the program flags this itself at "
                 f"the top of its output. A connected run replaces those values with no other "
-                f"change. Either way, the maturity of the note ({T:.0f} years) is longer than the "
-                f"longest listed expiry, so the volatility is extrapolated: that is a stated "
-                f"assumption, not an observation.")
+                f"change. Volatility assumption: the at-the-money volatility of the longest listed expiry "
+                f"({MKT['vol_tenor']:.1f} years) is held flat to the {T:.0f}-year maturity and used at "
+                f"every strike, so skew is ignored here; desk_analytics.py measures its effect.")
     p = para(note, size=10)
     shade(p, "FFF8E1")
 

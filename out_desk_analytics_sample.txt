@@ -1,0 +1,89 @@
+[!] Market data unavailable (offline mode (SP_OFFLINE)). Explicit parameters used.
+======================================================================
+DESK ANALYTICS - ATHENA AUTOCALL
+======================================================================
+
+Market data      Explicit parameters (no market data available)
+Spot 100.00 | rate 3.00% | dividend 2.00% | ATM vol 18.00% (read at 2.0y, held flat to 5y)
+
+1. Skew on the 60% protection barrier
+--------------------------------------------------------
+  Skew source                         Explicit skew spread of 8% (offline mode (SP_OFFLINE))
+  Vol at the 60% strike                     26.00%  (ATM 18.00%)
+  Smile slope at 60%                       -0.2000  vol per 100% of spot
+  Protection leg, flat vol                   -5.02 points
+  Protection leg, with skew                  -9.12 points
+  Share of the leg alive at maturity        47.58%
+  Skew adjustment to the note                -1.95 points
+  Coupon at par, flat vol                   13.89%
+  Coupon at par, with skew                  17.23%
+
+2. Sales sheet (risk-neutral probabilities, coupon with skew)
+--------------------------------------------------------
+  Obs  1 (0.25y)  call  49.28%  cumulative  49.28%  pays 104.31
+  Obs  2 (0.50y)  call  12.38%  cumulative  61.66%  pays 108.61
+  Obs  4 (1.00y)  call   3.88%  cumulative  71.78%  pays 117.23
+  Obs  8 (2.00y)  call   1.26%  cumulative  79.37%  pays 134.45
+  Obs 12 (3.00y)  call   0.66%  cumulative  82.75%  pays 151.68
+  Obs 16 (4.00y)  call   0.45%  cumulative  84.88%  pays 168.90
+  Obs 20 (5.00y)  call   0.28%  cumulative  86.29%  pays 186.13
+  Not called, capital protected              8.29%
+  Capital loss at maturity                   5.42%
+  Average final level if loss               48.59%
+  Expected life                               1.30 years
+  Scenarios at maturity (not called before)
+    final  130%  pays  186.13  called at the last observation, all coupons paid
+    final  110%  pays  186.13  called at the last observation, all coupons paid
+    final  100%  pays  186.13  called at the last observation, all coupons paid
+    final   90%  pays  100.00  capital returned, no coupon
+    final   75%  pays  100.00  capital returned, no coupon
+    final   60%  pays  100.00  capital returned, no coupon
+    final   59%  pays   59.00  capital loss, indexed on the underlying
+    final   45%  pays   45.00  capital loss, indexed on the underlying
+    final   30%  pays   30.00  capital loss, indexed on the underlying
+
+3. Worst-of autocall: Euro Stoxx 50, CAC 40, DAX
+--------------------------------------------------------
+  Data                                Explicit vols and correlations (offline mode (SP_OFFLINE))
+  EUR rate (explicit)                        2.25%
+  Euro Stoxx 50  vol  17.00%  dividend  3.00%  single coupon  14.69%
+  CAC 40         vol  17.00%  dividend  3.00%  single coupon  14.57%
+  DAX            vol  18.00%  dividend  0.00%  single coupon  10.70%
+  Correlations  SX5E/CAC 0.93  SX5E/DAX 0.92  CAC/DAX 0.88
+  Worst-of coupon at par                    17.74%
+    flat correlation 0.50                    27.02%
+    flat correlation 0.70                    22.68%
+    flat correlation 0.85                    19.42%
+    flat correlation 0.95                    16.94%
+    flat correlation 1.00                    14.79%
+
+4. Issuer funding spread
+--------------------------------------------------------
+  spread   participation   RC coupon p.a.   autocall coupon
+     0 bp         97.17%            6.49%            13.89%
+    30 bp        104.99%            6.89%            14.50%
+    60 bp        112.69%            7.29%            15.12%
+   100 bp        122.78%            7.84%            15.94%
+
+5. Delta hedging (desk short the note, priced without margin)
+--------------------------------------------------------
+  Coupon hedged                             10.46%
+  Simulated, realised vol = 18.00%   mean -0.42  std 1.51 points (60 paths)
+  Simulated, realised vol = 24.00%   mean +2.19  std 3.65 points (60 paths)
+  Historical SPY backtest: live mode only (not run)
+
+6. Controls
+--------------------------------------------------------
+  Protection leg: Monte Carlo vs put + digital replication
+         -5.044111        -5.023603   diff     -2.05e-02
+  Funding spread 0: participation vs base script
+          0.971697         0.971697   diff     +6.66e-16
+  Worst-of at correlation 1 vs single underlying (coupon)
+          0.138618         0.138851   diff     -2.33e-04
+
+======================================================================
+written: desk_analytics_report.docx
+written: fiche_produit_autocall_fr.docx
+written: ./out_call_probabilities.png
+written: ./out_coupon_vs_correlation.png
+written: ./out_hedge_pnl.png

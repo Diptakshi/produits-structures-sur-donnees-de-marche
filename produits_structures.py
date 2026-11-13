@@ -7,7 +7,7 @@ Diptakshi Sen - projet personnel, 2026
 Les parametres de cotation ne sont pas poses : ils sont extraits du marche.
 
     Spot                SPY (ETF S&P 500), dernier cours
-    Taux sans risque    ^TNX, rendement du 10 ans americain
+    Taux sans risque    ^FVX, rendement du 5 ans americain (meme maturite que la note)
     Dividende           implicite, deduit de la parite call-put sur la chaine
                         d'options a la monnaie
     Volatilite          implicite, interpolee a la monnaie sur la chaine
@@ -28,13 +28,14 @@ Lancer :  pip install yfinance numpy python-docx
           python structured_products_market.py
 """
 
+import os
 from math import exp, log, sqrt, erf
 from datetime import datetime
 import numpy as np
 
 # ------------------------------------------------------ 0. DONNEES DE MARCHE --
 UNDERLYING = "SPY"          # ETF S&P 500, chaine d'options tres liquide
-RATE_TICKER = "^TNX"        # rendement 10 ans americain, en pourcentage
+RATE_TICKER = "^FVX"        # rendement 5 ans americain, aligne sur la maturite de la note
 
 NOTIONAL = 100.0    # valeur nominale de la note
 FEE = 2.0           # marge de structuration et frais de distribution, en points
@@ -82,6 +83,8 @@ def load_market():
     un jeu de parametres explicite, signale comme tel dans le rapport.
     """
     try:
+        if os.environ.get("SP_OFFLINE"):
+            raise RuntimeError("offline mode (SP_OFFLINE)")
         import yfinance as yf
 
         tk = yf.Ticker(UNDERLYING)
@@ -135,18 +138,21 @@ def load_market():
             raise ValueError("volatilite implicite indisponible")
 
         sigma = term[-1][1]                      # echeance la plus longue cotee
+        vol_tenor = term[-1][0]                  # extrapolation plate au-dela de cette echeance
         q = float(np.median(q_est)) if q_est else 0.0
         q = min(max(q, 0.0), 0.08)               # garde-fou
 
         src = (f"Yahoo Finance, {UNDERLYING} au {hist.index[-1].date()}, "
                f"taux {RATE_TICKER}")
         return {"spot": spot, "r": r, "q": q, "sigma": sigma, "realised": realised,
-                "term": term, "source": src, "live": True}
+                "term": term, "source": src, "live": True,
+                "vol_tenor": vol_tenor}
 
     except Exception as exc:
         print(f"[!] Donnees de marche indisponibles ({exc}). Parametres explicites utilises.")
         return {"spot": 100.0, "r": 0.030, "q": 0.020, "sigma": 0.180,
                 "realised": 0.165, "term": [(1.0, 0.170, "n/a"), (2.0, 0.180, "n/a")],
+                "vol_tenor": 2.0,
                 "source": "Paramètres explicites (aucune donnée de marché disponible)",
                 "live": False}
 
@@ -366,6 +372,7 @@ def summary_lines():
     L.append(f"  Taux sans risque                    {pct(R):>12}")
     L.append(f"  Dividende                           {pct(Q):>12}")
     L.append(f"  Volatilité implicite (marché)       {pct(VOL):>12}")
+    L.append(f"  Volatilité lue à l'échéance         {MKT['vol_tenor']:>12.2f} ans, maintenue plate")
     L.append(f"  Volatilité réalisée 1 an            {pct(MKT['realised']):>12}")
     L.append(f"  Prime de volatilité                 {pct(VOL - MKT['realised']):>12}")
     L.append(f"  Maturité                            {T:>12.1f} ans")
@@ -442,7 +449,7 @@ def summary_lines():
     return L
 
 
-def write_docx(path="Diptakshi_Sen_Produits_Structures_Marche.docx"):
+def write_docx(path="rapport_produits_structures_fr.docx"):
     try:
         from docx import Document
         from docx.shared import Pt, Cm, RGBColor
@@ -560,11 +567,12 @@ def write_docx(path="Diptakshi_Sen_Produits_Structures_Marche.docx"):
 
     if MKT["live"]:
         note = (f"Sur les données. Source : {MKT['source']}. Le spot vient de la dernière "
-                f"clôture, le taux sans risque du rendement 10 ans, la volatilité de la chaîne "
+                f"clôture, le taux sans risque du rendement 5 ans (même maturité que la note), la volatilité de la chaîne "
                 f"d'options à la monnaie, et le dividende est déduit de la parité call-put "
-                f"plutôt que supposé. La maturité de la note ({T:.0f} ans) dépasse l'échéance "
-                f"cotée la plus longue, donc la volatilité est extrapolée : c'est une hypothèse "
-                f"assumée, pas une observation.")
+                f"plutôt que supposé. Hypothèse de volatilité : la volatilité à la monnaie de l'échéance cotée la "
+                f"plus longue ({MKT['vol_tenor']:.1f} ans) est maintenue plate jusqu'à {T:.0f} ans et "
+                f"utilisée à tous les strikes ; le skew est donc ignoré ici, desk_analytics.py en "
+                f"mesure l'effet sur le coupon de l'autocall.")
     else:
         note = (f"Sur les données. Le programme interroge Yahoo Finance ({UNDERLYING} pour le "
                 f"spot et la chaîne d'options, {RATE_TICKER} pour le taux) et déduit le "
@@ -572,9 +580,10 @@ def write_docx(path="Diptakshi_Sen_Produits_Structures_Marche.docx"):
                 f"les chiffres ci-dessus proviennent des paramètres explicites de repli "
                 f"(spot {S0:.0f}, taux {R:.2%}, dividende {Q:.2%}, volatilité {VOL:.2%}), et le "
                 f"programme le signale lui-même en tête de sortie. Une exécution connectée "
-                f"remplace ces valeurs sans autre modification. Dans les deux cas, la maturité "
-                f"de la note ({T:.0f} ans) dépasse l'échéance cotée la plus longue, donc la "
-                f"volatilité est extrapolée : c'est une hypothèse assumée, pas une observation.")
+                f"remplace ces valeurs sans autre modification. Hypothèse de volatilité : la volatilité à la monnaie de "
+                f"l'échéance cotée la plus longue ({MKT['vol_tenor']:.1f} ans) est maintenue plate "
+                f"jusqu'à {T:.0f} ans et utilisée à tous les strikes ; le skew est ignoré ici, "
+                f"desk_analytics.py en mesure l'effet.")
     p = para(note, size=10)
     shade(p, "FFF8E1")
 

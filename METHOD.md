@@ -56,3 +56,54 @@ q = −(1/T)·ln[ (C − P + K·e^(−rT)) / S ]
 
 The estimate is taken at the nearest strike on each sampled expiry and the median is used,
 bounded to [0%, 8%] as a sanity guard against a bad quote.
+
+## Rate and volatility inputs
+
+The risk-free rate is the US **5-year** Treasury yield (`^FVX`), the same tenor as the
+note. An earlier version used the 10-year yield, which overstated the discount on a
+5-year zero-coupon in a normal curve.
+
+The volatility is the at-the-money implied volatility of the longest listed SPY expiry,
+held flat out to five years and used at every strike. Both halves of that sentence are
+assumptions: the term structure beyond the last listed expiry is not observed, and the
+smile is ignored. `desk_analytics.py` measures what the second one costs.
+
+## Skew on the protection barrier (desk_analytics.py)
+
+The 60% protection is a down-and-in put sold by the investor at maturity. Its European
+leg replicates exactly:
+
+```
+N (S_T/S_0 − 1) 1{S_T < K}  =  −N/S_0 · [ Put(K) + (S_0 − K) · DigitalPut(K) ]
+```
+
+With a smile, the digital put is the strike derivative of the put price,
+`e^(−rT) N(−d2) + vega · dσ/dK`. The leg is repriced at the 60%-strike volatility and
+smile slope, and the difference with the flat-vol leg is scaled by the share of that leg
+that survives to maturity without an early call (read from the Monte Carlo). The control
+checks the replication against Monte Carlo.
+
+This is a first-order adjustment, not a local-volatility model: it captures the level and
+slope of the smile at the barrier, not the effect of the smile on the call probabilities.
+
+## Worst-of
+
+Three correlated GBMs (Cholesky on the correlation matrix, antithetic variates); the
+payoff is the base autocall applied to the worst performance. Yahoo does not publish index
+option chains, so one-year **realised** volatilities and correlations stand in for implied
+ones. The DAX is a total-return index, hence a zero dividend yield.
+
+## Funding
+
+The note is the issuer's debt: its cash flows are discounted at `r + funding spread`, while
+the paths stay risk-neutral at `r`. A wider spread makes the zero-coupon cheaper and leaves
+more budget for the option, so participation and coupons rise.
+
+## Delta hedging
+
+The desk sells the note at model value (no margin), buys delta shares, rebalances every
+five trading days and on every observation date, earns `r` on cash and `q` on the shares.
+Delta is a central bump of ±1% with common random numbers. On paths simulated with the
+pricing volatility the average P&L is close to zero; the dispersion is the cost of hedging
+discretely around barriers. With realised volatility above the pricing volatility the desk
+gains, because the investor is short volatility and the desk holds the other side.
